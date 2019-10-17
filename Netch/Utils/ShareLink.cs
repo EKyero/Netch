@@ -42,7 +42,7 @@ namespace Netch.Utils
                         return null;
                     }
 
-                    data.Address = dict["server"];
+                    data.Hostname = dict["server"];
                     data.Port = int.Parse(dict["port"]);
                     if (dict.ContainsKey("user") && !String.IsNullOrWhiteSpace(dict["user"]))
                     {
@@ -58,7 +58,7 @@ namespace Netch.Utils
                 else if (text.StartsWith("ss://"))
                 {
                     var data = new Models.Server();
-                    data.Type = "Shadowsocks";
+                    data.Type = "SS";
                     /*
                     try
                     {
@@ -120,8 +120,8 @@ namespace Netch.Utils
 
                             data.EncryptMethod = match.Groups["method"].Value;
                             data.Password = match.Groups["password"].Value;
-                            data.OBFS = plugins[0];
-                            data.OBFSParam = plugins[1];
+                            data.Plugin = plugins[0];
+                            data.PluginOption = plugins[1];
                         }
 
                         if (!Global.EncryptMethods.SS.Contains(data.EncryptMethod))
@@ -163,6 +163,7 @@ namespace Netch.Utils
                         }
                     }
                     */
+                    text = text.Replace("/?", "?");
                     try
                     {
                         if (text.Contains("#"))
@@ -170,19 +171,31 @@ namespace Netch.Utils
                             data.Remark = HttpUtility.UrlDecode(text.Split('#')[1]);
                             text = text.Split('#')[0];
                         }
-                        if (text.Contains("/?"))
+                        if (text.Contains("?"))
                         {
-                            var finder = new Regex(@"^(?<data>.+?)/\?plugin=(?<plugin>.+)$");
+                            var finder = new Regex(@"^(?<data>.+?)\?plugin=(?<plugin>.+)$");
                             var match = finder.Match(text);
 
                             if (match.Success)
                             {
-                                var plugins = HttpUtility.UrlDecode(match.Groups["plugin"].Value).Split(';');
-                                if (plugins[0] == "obfs-local")
-                                    plugins[0] = "simple-obfs";
+                                var plugins = HttpUtility.UrlDecode(match.Groups["plugin"].Value);
+                                var plugin = plugins.Substring(0, plugins.IndexOf(";"));
+                                var pluginopts = plugins.Substring(plugins.IndexOf(";") + 1);
+                                if (plugin == "obfs-local" || plugin == "simple-obfs")
+                                {
+                                    plugin = "simple-obfs";
+                                    if (!pluginopts.Contains("obfs="))
+                                        pluginopts = "obfs=http;obfs-host=" + pluginopts;
+                                }
+                                else if(plugin == "simple-obfs-tls")
+                                {
+                                    plugin = "simple-obfs";
+                                    if (!pluginopts.Contains("obfs="))
+                                        pluginopts = "obfs=tls;obfs-host=" + pluginopts;
+                                }
 
-                                data.OBFS = plugins[0];
-                                data.OBFSParam = plugins[1];
+                                data.Plugin = plugin;
+                                data.PluginOption = pluginopts;
                                 text = match.Groups["data"].Value;
                             }
                             else
@@ -192,7 +205,7 @@ namespace Netch.Utils
                         }
                         if (text.Contains("@"))
                         {
-                            var finder = new Regex(@"^ss://(?<base64>.+?)@(?<server>.+):(?<port>\d+?)$");
+                            var finder = new Regex(@"^ss://(?<base64>.+?)@(?<server>.+):(?<port>\d+)");
                             var parser = new Regex(@"^(?<method>.+?):(?<password>.+)$");
                             var match = finder.Match(text);
                             if (!match.Success)
@@ -200,7 +213,7 @@ namespace Netch.Utils
                                 throw new FormatException();
                             }
 
-                            data.Address = match.Groups["server"].Value;
+                            data.Hostname = match.Groups["server"].Value;
                             data.Port = int.Parse(match.Groups["port"].Value);
 
                             var base64 = URLSafeBase64Decode(match.Groups["base64"].Value);
@@ -215,14 +228,14 @@ namespace Netch.Utils
                         }
                         else
                         {
-                            var parser = new Regex(@"^((?<method>.+?):(?<password>.+)@(?<server>.+):(?<port>\d+))$");
+                            var parser = new Regex(@"^((?<method>.+?):(?<password>.+)@(?<server>.+):(?<port>\d+))");
                             var match = parser.Match(URLSafeBase64Decode(text.Replace("ss://", "")));
                             if (!match.Success)
                             {
                                 throw new FormatException();
                             }
 
-                            data.Address = match.Groups["server"].Value;
+                            data.Hostname = match.Groups["server"].Value;
                             data.Port = int.Parse(match.Groups["port"].Value);
                             data.EncryptMethod = match.Groups["method"].Value;
                             data.Password = match.Groups["password"].Value;
@@ -248,15 +261,15 @@ namespace Netch.Utils
                     foreach (var server in json.servers)
                     {
                         var data = new Models.Server();
-                        data.Type = "Shadowsocks";
+                        data.Type = "SS";
 
                         data.Remark = server.remarks;
-                        data.Address = server.server;
+                        data.Hostname = server.server;
                         data.Port = (server.port != 0) ? server.port : json.port;
                         data.Password = (server.password != null) ? server.password : json.password;
                         data.EncryptMethod = (server.encryption != null) ? server.encryption : json.encryption;
-                        data.OBFS = (String.IsNullOrEmpty(json.plugin)) ? (String.IsNullOrEmpty(server.plugin) ? null : server.plugin) : json.plugin;
-                        data.OBFSParam = (String.IsNullOrEmpty(json.plugin_options)) ? (String.IsNullOrEmpty(server.plugin_options) ? null : server.plugin_options) : json.plugin_options;
+                        data.Plugin = (String.IsNullOrEmpty(json.plugin)) ? (String.IsNullOrEmpty(server.plugin) ? null : server.plugin) : json.plugin;
+                        data.PluginOption = (String.IsNullOrEmpty(json.plugin_options)) ? (String.IsNullOrEmpty(server.plugin_options) ? null : server.plugin_options) : json.plugin_options;
 
                         if (Global.EncryptMethods.SS.Contains(data.EncryptMethod))
                         {
@@ -267,7 +280,7 @@ namespace Netch.Utils
                 else if (text.StartsWith("ssr://"))
                 {
                     var data = new Models.Server();
-                    data.Type = "ShadowsocksR";
+                    data.Type = "SSR";
 
                     text = text.Substring(6);
                     /*
@@ -342,7 +355,7 @@ namespace Netch.Utils
 
                     if (data.EncryptMethod != "none" && data.Protocol == "origin" && data.OBFS == "plain")
                     {
-                        data.Type = "Shadowsocks";
+                        data.Type = "SS";
                     }
                     */
                     var parser = new Regex(@"^(?<server>.+):(?<port>\d+?):(?<protocol>.+?):(?<method>.+?):(?<obfs>.+?):(?<password>.+?)/\?(?<info>.*)$");
@@ -350,7 +363,7 @@ namespace Netch.Utils
 
                     if(match.Success)
                     {
-                        data.Address = match.Groups["server"].Value;
+                        data.Hostname = match.Groups["server"].Value;
                         data.Port = int.Parse(match.Groups["port"].Value);
                         data.Password = URLSafeBase64Decode(match.Groups["password"].Value);
 
@@ -401,7 +414,7 @@ namespace Netch.Utils
                         if (Global.EncryptMethods.SS.Contains(data.EncryptMethod) && data.Protocol == "origin" && data.OBFS == "plain")
                         {
                             data.OBFS = "";
-                            data.Type = "Shadowsocks";
+                            data.Type = "SS";
                         }
                     }
 
@@ -416,7 +429,7 @@ namespace Netch.Utils
                     var vmess = Newtonsoft.Json.JsonConvert.DeserializeObject<Models.VMess>(URLSafeBase64Decode(text));
 
                     data.Remark = vmess.ps;
-                    data.Address = vmess.add;
+                    data.Hostname = vmess.add;
                     data.Port = vmess.port;
                     data.UserID = vmess.id;
                     data.AlterID = vmess.aid;
@@ -453,7 +466,7 @@ namespace Netch.Utils
                         }
                         else
                         {
-                            data.QUICSecurity = vmess.host;
+                            data.QUICSecure = vmess.host;
                             data.QUICSecret = vmess.path;
                         }
 
@@ -469,6 +482,70 @@ namespace Netch.Utils
 
                     list.Add(data);
                 }
+                else if (text.StartsWith("Netch://"))
+                {
+                    text = text.Substring(8);
+                    var NetchLink = Newtonsoft.Json.JsonConvert.DeserializeObject<Models.Server>(URLSafeBase64Decode(text));
+                    if (!String.IsNullOrEmpty(NetchLink.Hostname) || NetchLink.Port > 65536 || NetchLink.Port > 0)
+                    {
+                        return null;
+                    }
+
+                    switch (NetchLink.Type)
+                    {
+                        case "Socks5":
+                            list.Add(NetchLink);
+                            break;
+                        case "SS":
+                            if (!Global.EncryptMethods.SS.Contains(NetchLink.EncryptMethod))
+                            {
+                                Logging.Info($"不支持的 SS 加密方式：{NetchLink.EncryptMethod}");
+                                return null;
+                            }
+                            break;
+                        case "SSR":
+                            if (!Global.EncryptMethods.SSR.Contains(NetchLink.EncryptMethod))
+                            {
+                                Logging.Info($"不支持的 SSR 加密方式：{NetchLink.EncryptMethod}");
+                                return null;
+                            }
+                            if (!Global.Protocols.Contains(NetchLink.Protocol))
+                            {
+                                Logging.Info($"不支持的 SSR 协议：{NetchLink.Protocol}");
+                                return null;
+                            }
+                            if (!Global.OBFSs.Contains(NetchLink.OBFS))
+                            {
+                                Logging.Info($"不支持的 SSR 混淆：{NetchLink.OBFS}");
+                                return null;
+                            }
+                            break;
+                        case "VMess":
+                            if (!Global.TransferProtocols.Contains(NetchLink.TransferProtocol))
+                            {
+                                Logging.Info($"不支持的 VMess 传输协议：{NetchLink.TransferProtocol}");
+                                return null;
+                            }
+                            if (!Global.FakeTypes.Contains(NetchLink.FakeType))
+                            {
+                                Logging.Info($"不支持的 VMess 伪装类型：{NetchLink.FakeType}");
+                                return null;
+                            }
+                            if (NetchLink.TransferProtocol == "quic")
+                            {
+                                if (!Global.EncryptMethods.VMessQUIC.Contains(NetchLink.QUICSecure))
+                                {
+                                    Logging.Info($"不支持的 VMess QUIC 加密方式：{NetchLink.QUICSecure}");
+                                    return null;
+                                }
+                            }
+                            break;
+                        default:
+                            return null;
+                    }
+                    list.Add(NetchLink);
+                }
+
                 else
                 {
                     System.Windows.Forms.MessageBox.Show("未找到可导入的链接！", "错误", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Exclamation);

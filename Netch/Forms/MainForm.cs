@@ -30,7 +30,7 @@ namespace Netch.Forms
         /// <summary>
         ///     上一次下载的流量
         /// </summary>
-        public long LastDownlaodBandwidth = 0;
+        public long LastDownloadBandwidth = 0;
 
         /// <summary>
         ///     是否第一次打开
@@ -72,15 +72,29 @@ namespace Netch.Forms
             // 如果当前 ServerComboBox 中没元素，不做处理
         }
 
+        public void SelectLastMode()
+        {
+            // 如果值合法，选中该位置
+            if (Global.Settings.ModeComboBoxSelectedIndex > 0 && Global.Settings.ModeComboBoxSelectedIndex < ModeComboBox.Items.Count)
+            {
+                ModeComboBox.SelectedIndex = Global.Settings.ModeComboBoxSelectedIndex;
+            }
+            // 如果值非法，且当前 ModeComboBox 中有元素，选择第一个位置
+            else if (ModeComboBox.Items.Count > 0)
+            {
+                ModeComboBox.SelectedIndex = 0;
+            }
+
+            // 如果当前 ModeComboBox 中没元素，不做处理
+        }
 
         public void InitMode()
         {
             ModeComboBox.Items.Clear();
+            Global.ModeFiles.Clear();
 
             if (Directory.Exists("mode"))
             {
-                var list = new List<Models.Mode>();
-
                 foreach (var name in Directory.GetFiles("mode", "*.txt"))
                 {
                     var ok = true;
@@ -148,28 +162,29 @@ namespace Netch.Forms
 
                     if (ok)
                     {
-                        list.Add(mode);
+                        mode.FileName = Path.GetFileNameWithoutExtension(name);
+                        Global.ModeFiles.Add(mode);
                     }
                 }
 
-                var array = list.ToArray();
+                var array = Global.ModeFiles.ToArray();
                 Array.Sort(array, (a, b) => String.Compare(a.Remark, b.Remark, StringComparison.Ordinal));
 
                 ModeComboBox.Items.AddRange(array);
-            }
 
-            // 如果值合法，选中该位置
-            if (Global.Settings.ModeComboBoxSelectedIndex > 0 && Global.Settings.ModeComboBoxSelectedIndex < ModeComboBox.Items.Count)
-            {
-                ModeComboBox.SelectedIndex = Global.Settings.ModeComboBoxSelectedIndex;
+                SelectLastMode();
             }
-            // 如果值非法，且当前 ModeComboBox 中有元素，选择第一个位置
-            else if (ModeComboBox.Items.Count > 0)
-            {
-                ModeComboBox.SelectedIndex = 0;
-            }
+        }
 
-            // 如果当前 ModeComboBox 中没元素，不做处理
+        public void AddMode(Models.Mode mode)
+        {
+            ModeComboBox.Items.Clear();
+            Global.ModeFiles.Add(mode);
+            var array = Global.ModeFiles.ToArray();
+            Array.Sort(array, (a, b) => String.Compare(a.Remark, b.Remark, StringComparison.Ordinal));
+            ModeComboBox.Items.AddRange(array);
+
+            SelectLastMode();
         }
 
         private void ComboBox_DrawItem(object sender, DrawItemEventArgs e)
@@ -257,6 +272,7 @@ namespace Netch.Forms
             RestartServiceToolStripMenuItem.Text = Utils.i18N.Translate("Restart Service");
             UninstallServiceToolStripMenuItem.Text = Utils.i18N.Translate("Uninstall Service");
             ReloadModesToolStripMenuItem.Text = Utils.i18N.Translate("Reload Modes");
+            CleanDNSCacheToolStripMenuItem.Text = Utils.i18N.Translate("Clean DNS Cache");
             AboutToolStripButton.Text = Utils.i18N.Translate("About");
             ConfigurationGroupBox.Text = Utils.i18N.Translate("Configuration");
             ServerLabel.Text = Utils.i18N.Translate("Server");
@@ -286,6 +302,13 @@ namespace Netch.Forms
                     }
                 }
             });
+
+            // 打开软件时启动加速，产生开始按钮点击事件
+            if (Global.Settings.StartWhenOpened)
+            {
+                ControlButton.PerformClick();
+            }
+
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -295,21 +318,30 @@ namespace Netch.Forms
                 // 取消"关闭窗口"事件
                 e.Cancel = true; // 取消关闭窗体 
 
-                // 使关闭时窗口向右下角缩小的效果
-                this.WindowState = FormWindowState.Minimized;
-                this.NotifyIcon.Visible = true;
-
-                if (IsFirstOpened)
+                // 如果未勾选关闭窗口时退出，隐藏至右下角托盘图标
+                if (!Global.Settings.ExitWhenClosed)
                 {
-                    // 显示提示语
-                    this.NotifyIcon.BalloonTipTitle = "Netch";
-                    this.NotifyIcon.BalloonTipIcon = ToolTipIcon.Info;
-                    this.NotifyIcon.ShowBalloonTip(5);
+                    // 使关闭时窗口向右下角缩小的效果
+                    this.WindowState = FormWindowState.Minimized;
+                    this.NotifyIcon.Visible = true;
 
-                    IsFirstOpened = false;
+                    if (IsFirstOpened)
+                    {
+                        // 显示提示语
+                        this.NotifyIcon.BalloonTipTitle = "Netch";
+                        this.NotifyIcon.BalloonTipIcon = ToolTipIcon.Info;
+                        this.NotifyIcon.ShowBalloonTip(5);
+
+                        IsFirstOpened = false;
+                    }
+
+                    Hide();
                 }
-
-                Hide();
+                // 如果勾选了关闭时退出，自动点击退出按钮
+                else
+                {
+                    ExitToolStripButton.PerformClick();
+                }
             }
         }
 
@@ -334,6 +366,7 @@ namespace Netch.Forms
                 }
 
                 InitServer();
+                Utils.Configuration.Save();
             }
         }
 
@@ -375,17 +408,55 @@ namespace Netch.Forms
 
         private void UpdateServersFromSubscribeLinksToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            if (Global.Settings.UseProxyToUpdateSubscription)
+            {
+                // 当前 ServerComboBox 中至少有一项
+                if (ServerComboBox.SelectedIndex == -1)
+                {
+                    MessageBox.Show(Utils.i18N.Translate("Please select a server first"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                MenuStrip.Enabled = ConfigurationGroupBox.Enabled = ControlButton.Enabled = SettingsButton.Enabled = false;
+                ControlButton.Text = "...";
+                
+            }
+
             if (Global.Settings.SubscribeLink.Count > 0)
             {
                 DeletePictureBox.Enabled = false;
+
                 Task.Run(() =>
                 {
+                    if (Global.Settings.UseProxyToUpdateSubscription)
+                    {
+                        var mode = new Models.Mode()
+                        {
+                            Remark = "ProxyUpdate",
+                            Type = 5
+                        };
+                        MainController = new Controllers.MainController();
+                        MainController.Start(ServerComboBox.SelectedItem as Models.Server, mode);
+                    }
                     foreach (var item in Global.Settings.SubscribeLink)
                     {
                         using (var client = new Override.WebClient())
                         {
                             try
                             {
+                                if (!String.IsNullOrEmpty(item.UserAgent))
+                                {
+                                    client.Headers.Add("User-Agent", item.UserAgent);
+                                }
+                                else
+                                {
+                                    client.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36");
+                                }
+
+                                if (Global.Settings.UseProxyToUpdateSubscription)
+                                {
+                                    client.Proxy = new System.Net.WebProxy($"http://127.0.0.1:{Global.Settings.HTTPLocalPort}");
+                                }
+
                                 var response = client.DownloadString(item.Link);
 
                                 try
@@ -417,14 +488,6 @@ namespace Netch.Forms
 
                                         if (result != null)
                                         {
-                                            if (item.Link.Contains("n3ro"))
-                                            {
-                                                foreach (var x in result)
-                                                {
-                                                    x.Remark = x.Remark.Split('#')[0].Trim();
-                                                }
-                                            }
-
                                             foreach (var x in result)
                                             {
                                                 x.Group = item.Remark;
@@ -444,7 +507,14 @@ namespace Netch.Forms
 
                     InitServer();
                     DeletePictureBox.Enabled = true;
-                    MessageBox.Show(Utils.i18N.Translate("Update completed"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (Global.Settings.UseProxyToUpdateSubscription)
+                    {
+                        MenuStrip.Enabled = ConfigurationGroupBox.Enabled = ControlButton.Enabled = SettingsButton.Enabled = true;
+                        ControlButton.Text = Utils.i18N.Translate("Start");
+                        MainController.Stop();
+                    }
+                    MessageBox.Show(this, Utils.i18N.Translate("Update completed"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Utils.Configuration.Save();
                 });
 
                 MessageBox.Show(Utils.i18N.Translate("Updating in the background"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -458,6 +528,8 @@ namespace Netch.Forms
         private void RestartServiceToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Enabled = false;
+            StatusLabel.Text = $"{Utils.i18N.Translate("Status")}{Utils.i18N.Translate(": ")}{Utils.i18N.Translate("Restarting service")}";
+
             Task.Run(() =>
             {
                 try
@@ -481,7 +553,7 @@ namespace Netch.Forms
                     nfapinet.NFAPI.nf_registerDriver("netfilter2");
                 }
 
-                MessageBox.Show(Utils.i18N.Translate("Service has been restarted"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, Utils.i18N.Translate("Service has been restarted"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 Enabled = true;
             });
         }
@@ -489,6 +561,8 @@ namespace Netch.Forms
         private void UninstallServiceToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Enabled = false;
+            StatusLabel.Text = $"{Utils.i18N.Translate("Status")}{Utils.i18N.Translate(": ")}{Utils.i18N.Translate("Uninstalling Service")}";
+
             Task.Run(() =>
             {
                 var driver = $"{Environment.SystemDirectory}\\drivers\\netfilter2.sys";
@@ -514,16 +588,16 @@ namespace Netch.Forms
 
                         File.Delete(driver);
 
-                        MessageBox.Show(Utils.i18N.Translate("Service has been uninstalled"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(this, Utils.i18N.Translate("Service has been uninstalled"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(Utils.i18N.Translate("Error") + Utils.i18N.Translate(": ") + ex.ToString(), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(this, Utils.i18N.Translate("Error") + Utils.i18N.Translate(": ") + ex.ToString(), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
                 else
                 {
-                    MessageBox.Show(Utils.i18N.Translate("Service has been uninstalled"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this, Utils.i18N.Translate("Service has been uninstalled"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
 
                 Enabled = true;
@@ -537,7 +611,20 @@ namespace Netch.Forms
             {
                 InitMode();
 
-                MessageBox.Show(Utils.i18N.Translate("Modes have been reload"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, Utils.i18N.Translate("Modes have been reload"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Enabled = true;
+            });
+        }
+
+        private void CleanDNSCacheToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Enabled = false;
+            Task.Run(() =>
+            {
+                Utils.DNS.Cache.Clear();
+
+                MessageBox.Show(this, Utils.i18N.Translate("DNS cache cleanup succeeded"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                StatusLabel.Text = $"{Utils.i18N.Translate("Status")}{Utils.i18N.Translate(": ")}{Utils.i18N.Translate("DNS cache cleanup succeeded")}";
                 Enabled = true;
             });
         }
@@ -557,10 +644,10 @@ namespace Netch.Forms
                     case "Socks5":
                         (new Server.Socks5(ServerComboBox.SelectedIndex)).Show();
                         break;
-                    case "Shadowsocks":
+                    case "SS":
                         (new Server.Shadowsocks(ServerComboBox.SelectedIndex)).Show();
                         break;
-                    case "ShadowsocksR":
+                    case "SSR":
                         (new Server.ShadowsocksR(ServerComboBox.SelectedIndex)).Show();
                         break;
                     case "VMess":
@@ -580,7 +667,7 @@ namespace Netch.Forms
 
         private void DeletePictureBox_Click(object sender, EventArgs e)
         {
-            // 当前ServerComboBox中至少有一项
+            // 当前 ServerComboBox 中至少有一项
             if (ServerComboBox.SelectedIndex != -1)
             {
                 var index = ServerComboBox.SelectedIndex;
@@ -612,6 +699,7 @@ namespace Netch.Forms
                 Enabled = true;
                 StatusLabel.Text = $"{Utils.i18N.Translate("Status")}{Utils.i18N.Translate(": ")}{Utils.i18N.Translate("Test done")}";
                 Refresh();
+                Utils.Configuration.Save();
             });
         }
 
@@ -619,14 +707,14 @@ namespace Netch.Forms
         {
             if (State == Models.State.Waiting || State == Models.State.Stopped)
             {
-                // 当前ServerComboBox中至少有一项
+                // 当前 ServerComboBox 中至少有一项
                 if (ServerComboBox.SelectedIndex == -1)
                 {
                     MessageBox.Show(Utils.i18N.Translate("Please select a server first"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
-                // 当前ModeComboBox中至少有一项
+                // 当前 ModeComboBox 中至少有一项
                 if (ModeComboBox.SelectedIndex == -1)
                 {
                     MessageBox.Show(Utils.i18N.Translate("Please select an mode first"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -724,7 +812,7 @@ namespace Netch.Forms
                     if (mode.Type == 0)
                     {
                         LastUploadBandwidth = 0;
-                        LastDownlaodBandwidth = 0;
+                        LastDownloadBandwidth = 0;
                         UploadSpeedLabel.Text = "↑: 0 KB/s";
                         DownloadSpeedLabel.Text = "↓: 0 KB/s";
                         UsedBandwidthLabel.Text = $"{Utils.i18N.Translate("Used")}{Utils.i18N.Translate(": ")}0 KB";
@@ -756,21 +844,31 @@ namespace Netch.Forms
 
         private void ExitToolStripButton_Click(object sender, EventArgs e)
         {
+            // 当前状态如果不是已停止状态
+            if (State != Models.State.Waiting && State != Models.State.Stopped)
+            {
+                // 如果未勾选退出时停止，要求先点击停止按钮
+                if (!Global.Settings.StopWhenExited)
+                {
+                    MessageBox.Show(Utils.i18N.Translate("Please press Stop button first"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    this.Visible = true;
+                    this.ShowInTaskbar = true;  // 显示在系统任务栏 
+                    this.WindowState = FormWindowState.Normal;  // 还原窗体 
+                    this.NotifyIcon.Visible = true;  // 托盘图标隐藏 
+
+                    return;
+                }
+                // 否则直接调用停止按钮的方法
+                else
+                {
+                    ControlButton_Click(sender, e);
+                }
+            }
+
             Global.Settings.ServerComboBoxSelectedIndex = ServerComboBox.SelectedIndex;
             Global.Settings.ModeComboBoxSelectedIndex = ModeComboBox.SelectedIndex;
             Utils.Configuration.Save();
-
-            if (State != Models.State.Waiting && State != Models.State.Stopped)
-            {
-                MessageBox.Show(Utils.i18N.Translate("Please press Stop button first"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                this.Visible = true;
-                this.ShowInTaskbar = true;  // 显示在系统任务栏 
-                this.WindowState = FormWindowState.Normal;  // 还原窗体 
-                this.NotifyIcon.Visible = true;  // 托盘图标隐藏 
-
-                return;
-            }
 
             State = Models.State.Terminating;
             this.NotifyIcon.Visible = false;
@@ -807,10 +905,10 @@ namespace Netch.Forms
         {
             UsedBandwidthLabel.Text = $"{Utils.i18N.Translate("Used")}{Utils.i18N.Translate(": ")}{Utils.Bandwidth.Compute(upload + download)}";
             UploadSpeedLabel.Text = $"↑: {Utils.Bandwidth.Compute(upload - LastUploadBandwidth)}/s";
-            DownloadSpeedLabel.Text = $"↓: {Utils.Bandwidth.Compute(download - LastDownlaodBandwidth)}/s";
+            DownloadSpeedLabel.Text = $"↓: {Utils.Bandwidth.Compute(download - LastDownloadBandwidth)}/s";
 
             LastUploadBandwidth = upload;
-            LastDownlaodBandwidth = download;
+            LastDownloadBandwidth = download;
             Refresh();
         }
     }

@@ -27,7 +27,7 @@ namespace Netch.Controllers
         public Process Instance;
 
         /// <summary>
-        ///     当前装填
+        ///     当前状态
         /// </summary>
         public Models.State State = Models.State.Waiting;
 
@@ -42,11 +42,6 @@ namespace Netch.Controllers
             if (!File.Exists("bin\\Redirector.exe"))
             {
                 return false;
-            }
-
-            if (File.Exists("logging\\redirector.log"))
-            {
-                File.Delete("logging\\redirector.log");
             }
 
             // 生成驱动文件路径
@@ -128,31 +123,40 @@ namespace Netch.Controllers
 
             Instance = MainController.GetProcess();
             Instance.StartInfo.FileName = "bin\\Redirector.exe";
-            Instance.StartInfo.Arguments = $"-r 127.0.0.1:{Global.Settings.Socks5LocalPort} -p \"{processes}\"";
 
-            if (server.Type == "Socks5")
+            var FallBackArg = "";
+
+            if (server.Type != "Socks5")
             {
-                var result = Utils.DNS.Lookup(server.Address);
+                FallBackArg = $"-r 127.0.0.1:{Global.Settings.Socks5LocalPort} -p \"{processes}\"";
+            }
+
+            else
+            {
+                var result = Utils.DNS.Lookup(server.Hostname);
                 if (result == null)
                 {
                     Utils.Logging.Info("无法解析服务器 IP 地址");
                     return false;
                 }
 
-                Instance.StartInfo.Arguments = String.Format("-r {0}:{1} -p \"{2}\"", result.ToString(), server.Port, processes);
+                FallBackArg = $"-r {result.ToString()}:{server.Port} -p \"{processes}\"";
 
                 if (!String.IsNullOrWhiteSpace(server.Username) && !String.IsNullOrWhiteSpace(server.Password))
                 {
-                    Instance.StartInfo.Arguments += String.Format(" -username \"{0}\" -password \"{1}\"", server.Username, server.Password);
-                }
+                    FallBackArg += $" -username \"{server.Username}\" -password \"{server.Password}\"";
+                } 
             }
 
+            Instance.StartInfo.Arguments = FallBackArg + $" -t {Global.Settings.RedirectorTCPPort}";
             Instance.OutputDataReceived += OnOutputDataReceived;
             Instance.ErrorDataReceived += OnOutputDataReceived;
             State = Models.State.Starting;
             Instance.Start();
             Instance.BeginOutputReadLine();
             Instance.BeginErrorReadLine();
+
+            var IsFallback = false;
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(10);
@@ -164,11 +168,29 @@ namespace Netch.Controllers
 
                 if (State == Models.State.Stopped)
                 {
-                    Utils.Logging.Info("NF 进程启动失败");
-
-                    Stop();
-
-                    return false;
+                    if (!IsFallback)
+                    {
+                        IsFallback = true;
+                        Stop();
+                        Utils.Logging.Info($"尝试去除 \"-t {Global.Settings.RedirectorTCPPort}\" 参数后启动 \"bin\\Redirector.exe\"");
+                        Instance.StartInfo.Arguments = FallBackArg;
+                        Utils.Logging.Info($"当前 \"bin\\Redirector.exe\" 启动参数为 \"{Instance.StartInfo.Arguments}\"");
+                        Global.Settings.RedirectorTCPPort = 2800;
+                        Instance.CancelOutputRead();
+                        Instance.CancelErrorRead();
+                        Instance.OutputDataReceived += OnOutputDataReceived;
+                        Instance.ErrorDataReceived += OnOutputDataReceived;
+                        State = Models.State.Starting;
+                        Instance.Start();
+                        Instance.BeginOutputReadLine();
+                        Instance.BeginErrorReadLine();
+                    }
+                    else
+                    {
+                        Utils.Logging.Info("NF 进程启动失败");
+                        Stop();
+                        return false;
+                    }
                 }
             }
 

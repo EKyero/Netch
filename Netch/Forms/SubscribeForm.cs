@@ -15,9 +15,22 @@ namespace Netch.Forms
         {
             SubscribeLinkListView.Items.Clear();
 
-            foreach (var link in Global.Settings.SubscribeLink)
+            foreach (var item in Global.Settings.SubscribeLink)
             {
-                SubscribeLinkListView.Items.Add(new ListViewItem(new String[] { link.Remark, link.Link }));
+                if (!String.IsNullOrEmpty(item.UserAgent))
+                {
+                    SubscribeLinkListView.Items.Add(new ListViewItem(new String[] {
+                    item.Remark,
+                    item.Link,
+                    item.UserAgent}));
+                }
+                else
+                {
+                    SubscribeLinkListView.Items.Add(new ListViewItem(new String[] {
+                    item.Remark,
+                    item.Link,
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36"}));
+                }
             }
         }
 
@@ -26,11 +39,15 @@ namespace Netch.Forms
             Text = Utils.i18N.Translate("Subscribe");
             RemarkColumnHeader.Text = Utils.i18N.Translate("Remark");
             LinkColumnHeader.Text = Utils.i18N.Translate("Link");
+            UseSelectedServerCheckBox.Text = Utils.i18N.Translate("Use Selected Server To Update Subscription");
             DeleteToolStripMenuItem.Text = Utils.i18N.Translate("Delete");
             RemarkLabel.Text = Utils.i18N.Translate("Remark");
             LinkLabel.Text = Utils.i18N.Translate("Link");
             AddButton.Text = Utils.i18N.Translate("Add");
             ControlButton.Text = Utils.i18N.Translate("Save");
+
+            UserAgentTextBox.Text = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36";
+            UseSelectedServerCheckBox.Checked = Global.Settings.UseProxyToUpdateSubscription;
 
             InitSubscribeLink();
         }
@@ -81,11 +98,13 @@ namespace Netch.Forms
                         Global.Settings.SubscribeLink.Add(new Models.SubscribeLink()
                         {
                             Remark = RemarkTextBox.Text,
-                            Link = LinkTextBox.Text
+                            Link = LinkTextBox.Text,
+                            UserAgent = UserAgentTextBox.Text
                         });
 
                         RemarkTextBox.Text = String.Empty;
                         LinkTextBox.Text = String.Empty;
+                        UserAgentTextBox.Text = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36";
 
                         InitSubscribeLink();
                     }
@@ -108,6 +127,7 @@ namespace Netch.Forms
         private void ControlButton_Click(object sender, EventArgs e)
         {
             Utils.Configuration.Save();
+            Global.Settings.UseProxyToUpdateSubscription = UseSelectedServerCheckBox.Checked;
             MessageBox.Show(Utils.i18N.Translate("Successfully saved"), Utils.i18N.Translate("Information"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             Close();
         }

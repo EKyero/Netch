@@ -58,15 +58,18 @@
     
     "Options": "选项",
     "Restart Service": "重启服务",
+    "Restarting service": "正在重启服务中",
     "Service has been restarted": "服务已重启",
     "Uninstall Service": "卸载服务",
+    "Uninstalling Service": "正在卸载服务中",
     "Service has been uninstalled": "服务已卸载",
     "Reload Modes": "重载模式",
     "Modes have been reload": "模式已重载",
+    "Clean DNS Cache": "清理 DNS 缓存",
+    "DNS cache cleanup succeeded": "DNS 缓存清理成功",
 
     "About": "关于",
-    "Group": "群组",
-    "Channel": "频道",
+    "Telegram Channel": "Telegram 频道",
     "Sponsor": "赞助商",
 
     "Configuration": "配置信息",
@@ -81,6 +84,10 @@
     "Test done": "测试完成",
 
     "Remark": "备注",
+    "Filename": "文件名",
+    "Use Custom Filename": "使用自定义文件名",
+    "Stay the same": "保持一致",
+    "Time data": "时间数据",
     "Add": "添加",
     "Scan": "扫描",
     "Save": "保存",
@@ -92,6 +99,7 @@
     "Please enter a mode remark": "请输入模式的备注",
 
     "Link": "链接",
+    "Use Selected Server To Update Subscription": "使用选中的服务器更新订阅",
     "Delete": "删除",
     "Delete or not ? Will clean up the corresponding group of items in the server list": "是否删除？将会清理服务器列表中对应组的项目",
     "Remark can not be empty": "备注不可为空",
@@ -100,11 +108,16 @@
     "Successfully saved": "保存成功",
 
     "Settings": "设置",
+    "Start when opened": "打开软件时启动加速",
     "Local Port": "本地端口",
     "Allow other Devices to connect": "允许其他设备连入",
     "Netmask": "子网掩码",
     "Gateway": "网关",
     "Use Custom DNS": "使用自定义 DNS",
+    "Use Fake DNS": "使用 Fake DNS",
+    "Behavior": "行为",
+    "Exit when closed": "关闭时退出",
+    "Stop when exited": "退出时停止",
     "Global Bypass IPs": "全局直连 IP",
     "Port value illegal. Try again.": "端口值非法。请重试。",
     
